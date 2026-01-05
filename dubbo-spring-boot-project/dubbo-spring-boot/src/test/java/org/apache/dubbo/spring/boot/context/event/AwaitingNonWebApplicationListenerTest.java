@@ -17,15 +17,20 @@
 package org.apache.dubbo.spring.boot.context.event;
 
 import org.apache.dubbo.config.bootstrap.DubboBootstrap;
-
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.WebApplicationType;
+import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.context.ConfigurableApplicationContext;
+
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * {@link AwaitingNonWebApplicationListener} Test
+ * {@link AwaitingNonWebApplicationListener} tests
  */
-@Disabled
 class AwaitingNonWebApplicationListenerTest {
 
     @BeforeEach
@@ -38,34 +43,50 @@ class AwaitingNonWebApplicationListenerTest {
         DubboBootstrap.reset();
     }
 
-    //    @Test
-    //    void init() {
-    //        AtomicBoolean awaited = AwaitingNonWebApplicationListener.getAwaited();
-    //        awaited.set(false);
-    //    }
-    //
-    //    @Test
-    //    void testSingleContextNonWebApplication() {
-    //        new SpringApplicationBuilder(Object.class)
-    //                .web(false)
-    //                .run()
-    //                .close();
-    //
-    //        ShutdownHookCallbacks.INSTANCE.addCallback(() -> {
-    //            AtomicBoolean awaited = AwaitingNonWebApplicationListener.getAwaited();
-    //            assertTrue(awaited.get());
-    //            System.out.println("Callback...");
-    //        });
-    //    }
-    //
-    //    @Test
-    //    void testMultipleContextNonWebApplication() {
-    //        new SpringApplicationBuilder(Object.class)
-    //                .parent(Object.class)
-    //                .web(false)
-    //                .run().close();
-    //        AtomicBoolean awaited = AwaitingNonWebApplicationListener.getAwaited();
-    //        assertFalse(awaited.get());
-    //    }
+    /**
+     * Single non-web context:
+     * await() should be released on shutdown
+     */
+    @Test
+    void testSingleContextNonWebApplication() {
 
+        ConfigurableApplicationContext context =
+                new SpringApplicationBuilder(Object.class)
+                        .web(WebApplicationType.NONE)
+                        .run();
+
+        AtomicBoolean awaited =
+                new AwaitingNonWebApplicationListener().getAwaited();
+
+        assertFalse(awaited.get(), "awaited must be false before shutdown");
+
+        context.close();
+
+        assertTrue(awaited.get(), "awaited must be true after shutdown");
+    }
+
+    /**
+     * Parent-child non-web context:
+     * parent ApplicationReadyEvent MUST NOT trigger await()
+     */
+    @Test
+    void testMultipleContextNonWebApplication() {
+
+        ConfigurableApplicationContext context =
+                new SpringApplicationBuilder(Object.class)
+                        .parent(Object.class)
+                        .web(WebApplicationType.NONE)
+                        .run();
+
+        AtomicBoolean awaited =
+                new AwaitingNonWebApplicationListener().getAwaited();
+
+        assertFalse(awaited.get(),
+                "awaited must remain false after parent context ready");
+
+        context.close();
+        assertFalse(awaited.get(),
+                "awaited must remain false when no Dubbo ApplicationModel is present");
+
+    }
 }
